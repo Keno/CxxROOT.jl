@@ -9,8 +9,7 @@ icxx"""
 gROOT->GetClass("TGenPhaseSpace");
 gROOT->GetClass("TH2F");
 gROOT->GetClass("TCanvas");
-gROOT->GetClass("TMessageHandler");
-gROOT->GetClass("TGX11");
+gROOT->GetClass("TGHtml");
 """
 end
 app = icxx"""
@@ -18,6 +17,9 @@ new TApplication("ROOT Application", NULL, NULL);
 """
 icxx"""
 if (!gROOT->GetClass("TGenPhaseSpace")) gSystem->Load("libPhysics");
+"""
+h2 = icxx"""
+    new TH2F("h2","h2", 50,1.1,1.8, 50,1.1,1.8);
 """
 icxx"""
 TLorentzVector target(0.0, 0.0, 0.0, 0.938);
@@ -30,8 +32,6 @@ Double_t masses[3] = { 0.938, 0.139, 0.139} ;
 TGenPhaseSpace event;
 event.SetDecay(W, 3, masses);
 
-TH2F *h2 = new TH2F("h2","h2", 50,1.1,1.8, 50,1.1,1.8);
-
 for (Int_t n=0;n<100000;n++) {
   Double_t weight = event.Generate();
 
@@ -43,7 +43,12 @@ for (Int_t n=0;n<100000;n++) {
   TLorentzVector pPPip = *pProton + *pPip;
   TLorentzVector pPPim = *pProton + *pPim;
 
-  h2->Fill(pPPip.M2() ,pPPim.M2() ,weight);
+  $h2->Fill(pPPip.M2() ,pPPim.M2() ,weight);
 }
-h2->Draw();
+$h2->Draw();
 """
+task = @async while true
+sleep(0.1)
+icxx"gSystem->ProcessEvents();"
+end
+c1 = icxx"""(TCanvas *)gROOT->GetListOfCanvases()->FindObject("c1");"""

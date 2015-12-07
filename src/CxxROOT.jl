@@ -116,10 +116,13 @@ GetClassSharedLibs(class; map = globalMapFile) = globalMapFile[class]
 end
 
 @cxxm "Int_t TCxx::AutoLoad(const char *classname, Bool_t knowDictNotLoaded)" begin
-    try
-      for lib in split(GetClassSharedLibs(bytestring(classname)),' '; keep=false)
-          Libdl.dlopen(joinpath(ROOT_OBJ_DIR,"lib",lib), Libdl.RTLD_GLOBAL | Libdl.RTLD_LAZY)
-      end
+    libs = try
+      split(GetClassSharedLibs(bytestring(classname)),' '; keep=false)
+    catch
+      []
+    end
+    for lib in libs
+        Libdl.dlopen(joinpath(ROOT_OBJ_DIR,"lib",lib), Libdl.RTLD_GLOBAL | Libdl.RTLD_LAZY)
     end
     0
 end
@@ -319,7 +322,7 @@ long TCxx::MethodInfo_Property(MethodInfo_t *MI) const
 
 long TCxx::ClassInfo_Property(ClassInfo_t *cl) const
 {
-  clang::Decl *fDecl = (clang::Decl*)cl;
+  clang::Decl *fDecl = (clang::Decl*)((TCxxClassInfo*)cl)->decl;
   long property = 0L;
   property |= kIsCPPCompiled;
   const clang::DeclContext *ctxt = fDecl->getDeclContext();
@@ -365,7 +368,7 @@ long TCxx::ClassInfo_Property(ClassInfo_t *cl) const
 
 long TCxx::ClassInfo_ClassProperty(ClassInfo_t *cl) const {
   long property = 0L;
-   const clang::RecordDecl *RD = (clang::RecordDecl*)cl;
+   const clang::RecordDecl *RD = (clang::RecordDecl*)((TCxxClassInfo*)cl)->decl;
    if (!RD) {
       // We are an enum or namespace.
       // The cint interface always returns 0L for these guys.
@@ -432,7 +435,7 @@ TCxx::DeclId_t TCxx::GetDeclId(MethodInfo_t *MI) const
 }
 
 ClassInfo_t  *TCxx::ClassInfo_Factory(Bool_t /*all*/) const {
-    return 0;
+    return (ClassInfo_t*)new TCxxClassInfo;
 }
 
 ClassInfo_t  *TCxx::ClassInfo_Factory(ClassInfo_t * /* cl */) const {
@@ -505,10 +508,15 @@ end
 end
 
 @cxxm "void TCxx::SetClassInfo(TClass *cl, Bool_t reload)" begin
+    @show reload
     name = bytestring(icxx"$cl->GetName();");
     T = cxxparse(Cxx.instance(__current_compiler__), name, true)
     RD = Cxx.getAsCXXRecordDecl(T)
-    icxx"$cl->fClassInfo = (ClassInfo_t*)$(RD.ptr);"
+    icxx"""
+      TCxxClassInfo *CI = new TCxxClassInfo;
+      CI->decl = $RD;
+      $cl->fClassInfo = (ClassInfo_t*)CI;
+    """
     nothing
 end
 
@@ -541,7 +549,8 @@ static bool filterFD(clang::FunctionDecl *ProposedFD, clang::ParmVarDecl **compa
 function prototype_match(cl,method,proto)
     @show (bytestring(method), bytestring(proto))
     proto = bytestring(proto)
-    RD = pcpp"clang::CXXRecordDecl"(cl.ptr)
+    @assert cl != C_NULL
+    RD = icxx"(clang::CXXRecordDecl*)((TCxxClassInfo*)$cl)->decl;"
     @assert RD != C_NULL
 
     params = pcpp"clang::ParmVarDecl"[]
@@ -566,7 +575,7 @@ function prototype_match(cl,method,proto)
         return (clang::FunctionDecl*)nullptr;
         """
     else
-        FD = icxx"""
+        FD = pcpp"clang::FunctionDecl"(icxx"""
         clang::DeclarationName FuncName(&$(C.CI)->getASTContext().Idents.get($(method)));
         clang::SourceLocation FuncNameLoc = clang::SourceLocation();
         clang::LookupResult Result($(C.CI)->getSema(), FuncName, FuncNameLoc, clang::Sema::LookupMemberName,
@@ -590,7 +599,7 @@ function prototype_match(cl,method,proto)
         F.done();
 
         return Result.getRepresentativeDecl();
-        """
+        """.ptr)
     end
     @assert FD != C_NULL
     FD
@@ -602,7 +611,7 @@ end
 end
 
 @cxxm "Bool_t TCxx::ClassInfo_Contains(ClassInfo_t *info, DeclId_t decl) const" begin
-    RD = pcpp"clang::CXXRecordDecl"(info.ptr)
+    RD = icxx"(clang::CXXRecordDecl*)((TCxxClassInfo*)$info)->decl;"
     @assert RD != C_NULL
 
     FD = pcpp"clang::CXXMethodDecl"(decl)
@@ -667,12 +676,17 @@ end
 
 const temporaries = Any[]
 
-function exec(func)
+function exec(func,addr)
   CallFunc = unsafe_pointer_to_objref(func.ptr)
   # Convert arguments to the required types
   types = map(x->x[2],Cxx.extract_params(Cxx.instance(Cxx.__default_compiler__),
-    CallFunc.method)[2:end])
-  @show types
+    CallFunc.method))
+  thisT = types[1]
+  types = types[2:end]
+  if addr != C_NULL
+    thisarg = thisT(addr)
+  end
+  icxx"$(CallFunc.method)->dump();"
   args = map(zip(CallFunc.arg,types)) do x
     arg, T = x
     # Implicit IntToPtr
@@ -681,8 +695,12 @@ function exec(func)
     end
     convert(T,arg)
   end
+  if addr != C_NULL
+    unshift!(args, thisarg)
+  end
+  @show args
   # Note ROOT expects constructors to be `new`'ed
-  ret = eval(Expr(:call,Cxx.cxxnewcall,Cxx.__default_compiler__,Val{CallFunc.method}(),args...))
+  ret = eval(Expr(:call,addr == C_NULL ? Cxx.cxxnewcall : Cxx.cppcall_member,Cxx.__default_compiler__,Val{CallFunc.method}(),args...))
   @show ret
   if isa(ret, Cxx.CppValue)
     push!(temporaries,ret)
@@ -693,11 +711,11 @@ function exec(func)
 end
 
 @cxxm "Long_t TCxx::CallFunc_ExecInt(CallFunc_t *func, void *addr) const" begin
-  exec(func)
+  exec(func,addr)
 end
 
 @cxxm "void TCxx::CallFunc_Exec(CallFunc_t *func, void *addr) const" begin
-  exec(func)
+  exec(func,addr)
 end
 
 
@@ -727,10 +745,19 @@ end
 
 @cxxm "void TCxx::ClassInfo_Init(ClassInfo_t *info, const char *name) const" begin
   @show bytestring(name)
-  @show Cxx.lookup_name(Cxx.instance(Cxx.__default_compiler__),[bytestring(name)])
+  @assert info != C_NULL
+  decl = Cxx.lookup_name(Cxx.instance(Cxx.__default_compiler__),[bytestring(name)])
+  icxx"((TCxxClassInfo*)$info)->decl = $decl;"
+  nothing
 end
 
+@cxxm "Int_t TCxx::DeleteGlobal(void *obj)" begin
+  0
+end
 
+@cxxm "void TCxx::RegisterTClassUpdate(TClass *oldcl,DictFuncPtr_t dict)" begin
+  nothing
+end
 
 # TCollection Iteration
 import Base: start, next, done

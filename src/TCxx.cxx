@@ -26,6 +26,10 @@ public:
 
 TCxxLookupHelper::~TCxxLookupHelper() {}
 
+struct TCxxClassInfo {
+   clang::Decl *decl;
+};
+
 class TCxx : public TInterpreter {
 
 private:
@@ -100,7 +104,7 @@ public:
                                    void (* /*triggerFunc*/)(),
                                    const FwdDeclArgsToKeepCollection_t& fwdDeclArgsToKeep,
                                    const char** classesHeaders);
-   virtual void     RegisterTClassUpdate(TClass *oldcl,DictFuncPtr_t dict) { assert(false); }
+   virtual void     RegisterTClassUpdate(TClass *oldcl,DictFuncPtr_t dict);
    virtual void     UnRegisterTClassUpdate(const TClass *oldcl);
    virtual Int_t    SetClassSharedLibs(const char *cls, const char *libs) { assert(false); }
    virtual void     SetGetline(const char*(*getlineFunc)(const char* prompt),
@@ -110,7 +114,7 @@ public:
    virtual void     ResetGlobals();
    virtual void     ResetGlobalVar(void *obj) { assert(false); }
    virtual void     RewindDictionary() { assert(false); }
-   virtual Int_t    DeleteGlobal(void *obj) { assert(false); }
+   virtual Int_t    DeleteGlobal(void *obj);
    virtual Int_t    DeleteVariable(const char* name) { assert(false); }
    virtual void     SaveContext();
    virtual void     SaveGlobalsContext();
@@ -144,7 +148,7 @@ public:
 
    // core/meta helper functions.
    virtual EReturnType MethodCallReturnType(TFunction *func) const { assert(false); }
-   virtual ULong64_t GetInterpreterStateMarker() const { assert(false); }
+   virtual ULong64_t GetInterpreterStateMarker() const { return 0; }
 
    typedef TDictionary::DeclId_t DeclId_t;
    virtual DeclId_t GetDeclId(CallFunc_t *info) const { assert(false); }
