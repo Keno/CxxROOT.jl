@@ -10,6 +10,21 @@
 //////////////////////////////////////////////////////////////////////////
 
 #include "TInterpreter.h"
+#include "TClassEdit.h"
+
+class TCxxLookupHelper : public TClassEdit::TInterpreterLookupHelper {
+public:
+   TCxxLookupHelper() : TClassEdit::TInterpreterLookupHelper() {}
+   virtual ~TCxxLookupHelper();
+
+   virtual bool ExistingTypeCheck(const std::string &tname, std::string &result);
+   virtual void GetPartiallyDesugaredName(std::string &nameLong) { assert(false); }
+   virtual bool IsAlreadyPartiallyDesugaredName(const std::string &nondef, const std::string &nameLong) { assert(false); }
+   virtual bool IsDeclaredScope(const std::string &base, bool &isInlined) { assert(false); }
+   virtual bool GetPartiallyDesugaredNameWithScopeHandling(const std::string &tname, std::string &result);
+};
+
+TCxxLookupHelper::~TCxxLookupHelper() {}
 
 class TCxx : public TInterpreter {
 
@@ -18,15 +33,25 @@ private:
 
 protected:
    virtual void Execute(TMethod *method, TObjArray *params, int *error = 0) { assert(false); }
-   virtual Bool_t SetSuspendAutoParsing(Bool_t value) { assert(false); }
+   virtual Bool_t SetSuspendAutoParsing(Bool_t value) { return false; }
 
 
 public:
 
    virtual Bool_t IsAutoParsingSuspended() const;
 
-   TCxx() { }   // for Dictionary
-   TCxx(const char *name, const char *title = "Generic Interpreter", TInterpreter *fwd = gCling) : _fwd(fwd), TInterpreter(name,title) {}
+   TCxx() {
+
+      auto *lookupHelper = new TCxxLookupHelper;
+      TClassEdit::Init(lookupHelper);
+
+    }   // for Dictionary
+   TCxx(const char *name, const char *title = "Generic Interpreter", TInterpreter *fwd = gCling) : _fwd(fwd), TInterpreter(name,title) {
+
+      auto *lookupHelper = new TCxxLookupHelper;
+      TClassEdit::Init(lookupHelper);
+
+   }
    virtual ~TCxx();
 
    virtual void     AddIncludePath(const char *path) { assert(false); }
@@ -126,7 +151,7 @@ public:
    virtual DeclId_t GetDeclId(ClassInfo_t *info) const { assert(false); }
    virtual DeclId_t GetDeclId(DataMemberInfo_t *info) const { assert(false); }
    virtual DeclId_t GetDeclId(FuncTempInfo_t *info) const { assert(false); }
-   virtual DeclId_t GetDeclId(MethodInfo_t *info) const { assert(false); }
+   virtual DeclId_t GetDeclId(MethodInfo_t *info) const;
    virtual DeclId_t GetDeclId(TypedefInfo_t *info) const { assert(false); }
 
    virtual void SetDeclAttr(DeclId_t, const char* /* attribute */) { assert(false); }
@@ -146,24 +171,81 @@ public:
    virtual void     LoadFunctionTemplates(TClass* cl) const { assert(false); }
 
    // CallFunc interface
-   virtual void   CallFunc_SetArg(CallFunc_t * /*func */, Long_t /* param */) const { assert(false); }
-   virtual void   CallFunc_SetArg(CallFunc_t * /*func */, ULong_t /* param */) const { assert(false); }
-   virtual void   CallFunc_SetArg(CallFunc_t * /* func */, Float_t /* param */) const { assert(false); }
-   virtual void   CallFunc_SetArg(CallFunc_t * /* func */, Double_t /* param */) const { assert(false); }
-   virtual void   CallFunc_SetArg(CallFunc_t * /* func */, Long64_t /* param */) const { assert(false); }
-   virtual void   CallFunc_SetArg(CallFunc_t * /* func */, ULong64_t /* param */) const { assert(false); }
+   virtual void   CallFunc_Delete(CallFunc_t * /* func */) const { assert(false); }
+   virtual void   CallFunc_Exec(CallFunc_t * /* func */, void * /* address */) const;
+   virtual void   CallFunc_Exec(CallFunc_t * /* func */, void * /* address */, TInterpreterValue& /* val */) const { assert(false); }
+   virtual void   CallFunc_ExecWithReturn(CallFunc_t * /* func */, void * /* address */, void * /* ret */) const { assert(false); }
+   virtual void   CallFunc_ExecWithArgsAndReturn(CallFunc_t * /* func */, void * /* address */, const void* /* args */ [] = 0, int /*nargs*/ = 0, void * /* ret */ = 0) const { assert(false); }
+   virtual Long_t    CallFunc_ExecInt(CallFunc_t * /* func */, void * /* address */) const { assert(false); }
+   virtual Long64_t  CallFunc_ExecInt64(CallFunc_t * /* func */, void * /* address */) const { assert(false); }
+   virtual Double_t  CallFunc_ExecDouble(CallFunc_t * /* func */, void * /* address */) const { assert(false); }
+   virtual CallFunc_t   *CallFunc_Factory() const;
+   virtual CallFunc_t   *CallFunc_FactoryCopy(CallFunc_t * /* func */) const { assert(false); }
+   virtual MethodInfo_t *CallFunc_FactoryMethod(CallFunc_t * /* func */) const { assert(false); }
+   virtual void   CallFunc_IgnoreExtraArgs(CallFunc_t * /*func */, bool /*ignore*/) const;
+   virtual void   CallFunc_Init(CallFunc_t * /* func */) const { assert(false); }
+   virtual Bool_t CallFunc_IsValid(CallFunc_t * /* func */) const { assert(false); }
+   virtual CallFuncIFacePtr_t CallFunc_IFacePtr(CallFunc_t * /* func */) const { assert(false); }
+   virtual void   CallFunc_ResetArg(CallFunc_t * /* func */) const;
+   virtual void   CallFunc_SetArgArray(CallFunc_t * /* func */, Long_t * /* paramArr */, Int_t /* nparam */) const { assert(false); }
+   virtual void   CallFunc_SetArgs(CallFunc_t * /* func */, const char * /* param */) const { assert(false); }
 
+   virtual void   CallFunc_SetArg(CallFunc_t * /*func */, Long_t /* param */) const;
+   virtual void   CallFunc_SetArg(CallFunc_t * /*func */, ULong_t /* param */) const;
+   virtual void   CallFunc_SetArg(CallFunc_t * /* func */, Float_t /* param */) const;
+   virtual void   CallFunc_SetArg(CallFunc_t * /* func */, Double_t /* param */) const;
+   virtual void   CallFunc_SetArg(CallFunc_t * /* func */, Long64_t /* param */) const;
+   virtual void   CallFunc_SetArg(CallFunc_t * /* func */, ULong64_t /* param */) const;
+
+   virtual void   CallFunc_SetFunc(CallFunc_t * /* func */, ClassInfo_t * /* info */, const char * /* method */, const char * /* params */, bool /* objectIsConst */, Long_t * /* Offset */) const;
+   virtual void   CallFunc_SetFunc(CallFunc_t * /* func */, ClassInfo_t * /* info */, const char * /* method */, const char * /* params */, Long_t * /* Offset */) const { assert(false); }
+   virtual void   CallFunc_SetFunc(CallFunc_t * /* func */, MethodInfo_t * /* info */) const;
+   virtual void   CallFunc_SetFuncProto(CallFunc_t * /* func */, ClassInfo_t * /* info */, const char * /* method */, const char * /* proto */, Long_t * /* Offset */, ROOT::EFunctionMatchMode /* mode */ = ROOT::kConversionMatch) const;
+   virtual void   CallFunc_SetFuncProto(CallFunc_t * /* func */, ClassInfo_t * /* info */, const char * /* method */, const char * /* proto */, bool /* objectIsConst */, Long_t * /* Offset */, ROOT::EFunctionMatchMode /* mode */ = ROOT::kConversionMatch) const { assert(false); }
    virtual void   CallFunc_SetFuncProto(CallFunc_t* func, ClassInfo_t* info, const char* method, const std::vector<TypeInfo_t*> &proto, Long_t* Offset, ROOT::EFunctionMatchMode mode = ROOT::kConversionMatch) const { assert(false); }
    virtual void   CallFunc_SetFuncProto(CallFunc_t* func, ClassInfo_t* info, const char* method, const std::vector<TypeInfo_t*> &proto, bool objectIsConst, Long_t* Offset, ROOT::EFunctionMatchMode mode = ROOT::kConversionMatch) const { assert(false); }
 
 
    // ClassInfo interface
-   virtual Bool_t ClassInfo_Contains(ClassInfo_t *info, DeclId_t decl) const { assert(false); }
-   virtual ClassInfo_t  *ClassInfo_Factory(Bool_t /*all*/ = kTRUE) const { assert(false); }
-   virtual ClassInfo_t  *ClassInfo_Factory(ClassInfo_t * /* cl */) const { assert(false); }
-   virtual ClassInfo_t  *ClassInfo_Factory(const char * /* name */) const { assert(false); }
+   virtual Bool_t ClassInfo_Contains(ClassInfo_t *info, DeclId_t decl) const;
+   virtual ClassInfo_t  *ClassInfo_Factory(Bool_t /*all*/ = kTRUE) const;
+   virtual ClassInfo_t  *ClassInfo_Factory(ClassInfo_t * /* cl */) const;
+   virtual ClassInfo_t  *ClassInfo_Factory(const char * /* name */) const;
 
    virtual ClassInfo_t *BaseClassInfo_ClassInfo(BaseClassInfo_t * /* bcinfo */) const { assert(false); }
+
+   virtual Long_t ClassInfo_ClassProperty(ClassInfo_t * /* info */) const;
+   virtual void   ClassInfo_Delete(ClassInfo_t * /* info */) const;
+   virtual void   ClassInfo_Delete(ClassInfo_t * /* info */, void * /* arena */) const { assert(false); }
+   virtual void   ClassInfo_DeleteArray(ClassInfo_t * /* info */, void * /* arena */, bool /* dtorOnly */) const { assert(false); }
+   virtual void   ClassInfo_Destruct(ClassInfo_t * /* info */, void * /* arena */) const { assert(false); }
+   virtual Long_t   ClassInfo_GetBaseOffset(ClassInfo_t* /* fromDerived */,
+                                            ClassInfo_t* /* toBase */, void* /* address */ = 0, bool /*isderived*/ = true) const { assert(false); }
+   virtual int    ClassInfo_GetMethodNArg(ClassInfo_t * /* info */, const char * /* method */,const char * /* proto */, Bool_t /* objectIsConst */ = false, ROOT::EFunctionMatchMode /* mode */ = ROOT::kConversionMatch) const { assert(false); }
+   virtual Bool_t ClassInfo_HasDefaultConstructor(ClassInfo_t * /* info */) const { assert(false); }
+   virtual Bool_t ClassInfo_HasMethod(ClassInfo_t * /* info */, const char * /* name */) const {assert(false);}
+   virtual void   ClassInfo_Init(ClassInfo_t * /* info */, const char * /* funcname */) const {assert(false);}
+   virtual void   ClassInfo_Init(ClassInfo_t * /* info */, int /* tagnum */) const {;}
+   virtual Bool_t ClassInfo_IsBase(ClassInfo_t * /* info */, const char * /* name */) const {assert(false);}
+   virtual Bool_t ClassInfo_IsEnum(const char * /* name */) const {assert(false);}
+   virtual Bool_t ClassInfo_IsLoaded(ClassInfo_t * /* info */) const {assert(false);}
+   virtual Bool_t ClassInfo_IsValid(ClassInfo_t * /* info */) const {assert(false);}
+   virtual Bool_t ClassInfo_IsValidMethod(ClassInfo_t * /* info */, const char * /* method */,const char * /* proto */, Long_t * /* offset */, ROOT::EFunctionMatchMode /* mode */ = ROOT::kConversionMatch) const {assert(false);}
+   virtual Bool_t ClassInfo_IsValidMethod(ClassInfo_t * /* info */, const char * /* method */,const char * /* proto */, Bool_t /* objectIsConst */, Long_t * /* offset */, ROOT::EFunctionMatchMode /* mode */ = ROOT::kConversionMatch) const {assert(false);}
+   virtual int    ClassInfo_Next(ClassInfo_t * /* info */) const {assert(false);}
+   virtual void  *ClassInfo_New(ClassInfo_t * /* info */) const {assert(false);}
+   virtual void  *ClassInfo_New(ClassInfo_t * /* info */, int /* n */) const {assert(false);}
+   virtual void  *ClassInfo_New(ClassInfo_t * /* info */, int /* n */, void * /* arena */) const {assert(false);}
+   virtual void  *ClassInfo_New(ClassInfo_t * /* info */, void * /* arena */) const {assert(false);}
+   virtual Long_t ClassInfo_Property(ClassInfo_t * /* info */) const;
+   virtual int    ClassInfo_Size(ClassInfo_t * /* info */) const {assert(false);}
+   virtual Long_t ClassInfo_Tagnum(ClassInfo_t * /* info */) const {assert(false);}
+   virtual const char *ClassInfo_FileName(ClassInfo_t * /* info */) const;
+   virtual const char *ClassInfo_FullName(ClassInfo_t * /* info */) const;
+   virtual const char *ClassInfo_Name(ClassInfo_t * /* info */) const;
+   virtual const char *ClassInfo_Title(ClassInfo_t * /* info */) const;
+   virtual const char *ClassInfo_TmpltName(ClassInfo_t * /* info */) const;
+
 
    // Function Template interface
    virtual void   FuncTempInfo_Delete(FuncTempInfo_t * /* ft_info */) const { assert(false); }
@@ -177,8 +259,10 @@ public:
    virtual void FuncTempInfo_Title(FuncTempInfo_t * /* ft_info */, TString &title) const { assert(false); }
 
    // MethodInfo interface
-   virtual MethodInfo_t  *MethodInfo_Factory(DeclId_t declid) const { assert(false); }
-   virtual Long_t MethodInfo_Property(MethodInfo_t * /* minfo */) const { assert(false); }
+   virtual MethodInfo_t  *MethodInfo_Factory(DeclId_t declid) const;
+   virtual Long_t MethodInfo_Property(MethodInfo_t * /* minfo */) const;
+   virtual int    MethodInfo_NArg(MethodInfo_t * /* minfo */) const;
+   virtual int    MethodInfo_NDefaultArg(MethodInfo_t * /* minfo */) const;
    virtual Long_t MethodInfo_ExtraProperty(MethodInfo_t * /* minfo */) const { assert(false); }
    virtual EReturnType MethodInfo_MethodCallReturnType(MethodInfo_t* minfo) const { assert(false); }
 
