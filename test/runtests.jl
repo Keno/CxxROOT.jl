@@ -1,9 +1,6 @@
 using CxxROOT
 CxxROOT.LoadLibraryMap()
 tcxx = icxx"""new TCxx("C++","Cxx.jl C++ Interpreter");"""
-cxx"""
-#include "/Users/kfischer/Projects/root/graf2d/x11/inc/TGX11.h"
-"""
 try
 icxx"""
 gROOT->GetClass("TGenPhaseSpace");
